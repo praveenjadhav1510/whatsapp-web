@@ -13,7 +13,7 @@ A full-stack WhatsApp Web-like chat application built using **Next.js**, **Node.
 - ✅ Unread message count and notification bubbles
 - ✅ Real-time messaging with Socket.IO
 - ✅ MongoDB-based message storage and status tracking
-- ✅ Webhook-style message simulation support
+- ✅ Webhook style message simulation support
 
 ---
 
