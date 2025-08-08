@@ -1,9 +1,4 @@
-Here’s your complete `README.md` code ready to copy-paste into your project:
-
----
-
-````md
-# 💬 WhatsApp Web Clone
+# WhatsApp Web Clone
 
 A full-stack WhatsApp Web-like chat application built using **Next.js**, **Node.js**, **MongoDB Atlas**, and **Socket.IO**, featuring real-time messaging, user login, chat notifications, message read receipts, and mobile-friendly design.
 
@@ -22,7 +17,7 @@ A full-stack WhatsApp Web-like chat application built using **Next.js**, **Node.
 
 ---
 
-## 🧰 Tech Stack
+## Tech Stack
 
 | Layer     | Stack                               |
 | --------- | ----------------------------------- |
@@ -43,13 +38,12 @@ MONGODB_URI=your-mongodb-connection-uri
 NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
 JWT_SECRET=your-secret-key
 ```
-````
 
-> 🔐 Encode special characters in your MongoDB password (like `$`, `@`, `#`, etc.) using URL encoding.
+Encode special characters in your MongoDB password (like `$`, `@`, `#`, etc.) using URL encoding.
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```bash
 # Clone the repository
@@ -74,27 +68,6 @@ pnpm install
 pnpm start        # or node server.js
 ```
 
----
-
-## 🔄 Simulating Webhook Payloads (Optional)
-
-To simulate WhatsApp webhook data:
-
-1. Place sample `.json` files in a `/payloads` folder.
-2. Run:
-
-```bash
-node webhook-processor.js
-```
-
----
-
-## 📸 Screenshots
-
-_(Insert screenshots of your chat UI, login screen, mobile view, etc.)_
-
----
-
 ## 📡 Live Demo
 
 🔗 [Live Project URL](https://your-vercel-url.vercel.app)
@@ -113,7 +86,4 @@ Built with ❤️ by [Praveen Jadhav](https://github.com/praveenjadhav1510)
 
 ```
 
----
-
-If you want, I can also make you a **`.env.example` file** so that anyone cloning the repo knows exactly what variables to set. That will make your GitHub project fully runnable for others.
 ```
