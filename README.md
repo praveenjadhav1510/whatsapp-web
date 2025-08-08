@@ -83,7 +83,3 @@ This project is for evaluation and learning purposes.
 ## ✨ Credits
 
 Built with ❤️ by [Praveen Jadhav](https://github.com/praveenjadhav1510)
-
-```
-
-```

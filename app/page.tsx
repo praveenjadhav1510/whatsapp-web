@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { LoginForm } from '@/components/login-form'
 import { ConversationList } from '@/components/conversation-list'
@@ -9,6 +9,7 @@ import { ConnectionStatus } from '@/components/connection-status'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { useSocket } from '@/hooks/useSocket'
 import { useRealTimeMessages } from '@/hooks/useRealTimeMessages'
+import { useNotificationSystem } from '@/hooks/useNotificationSystem'
 import { chatStorage, StoredConversation, StoredMessage } from '@/lib/storage'
 import { notificationManager } from '@/lib/notifications'
 
@@ -41,9 +42,23 @@ export default function WhatsAppClone() {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showAddContactDialog, setShowAddContactDialog] = useState(false)
   const [isPageVisible, setIsPageVisible] = useState(true)
+  const [convSearch, setConvSearch] = useState('')
 
   // Socket connection
   const { socket, isConnected, connectionAttempts } = useSocket(user?.phone)
+
+  // Notification system with polling (manual button removed)
+  const { isPolling, totalUnreadCount, updateUnreadCount } = useNotificationSystem({
+    userPhone: user?.phone || '',
+    selectedConversation,
+    isPageVisible,
+    onNewMessage: () => {
+      loadConversationsFromStorage()
+    },
+    onConversationUpdate: () => {
+      loadConversationsFromStorage()
+    }
+  })
 
   // Real-time messaging
   const { typingUsers, sendTypingIndicator, broadcastMessage } = useRealTimeMessages({
@@ -53,70 +68,50 @@ export default function WhatsAppClone() {
     messages,
     setMessages,
     onNewMessage: (message) => {
-      console.log('🔔 NEW MESSAGE CALLBACK - Processing notification for:', message)
-      console.log('📱 Page visible:', isPageVisible)
-      console.log('💬 Selected conversation:', selectedConversation)
-      console.log('👤 Message from:', message.from_phone)
-    
-      if (!user) {
-        console.log('❌ No user logged in, skipping notification')
-        return
-      }
+      if (!user) return
 
-      // Add to local storage with 'delivered' status for incoming messages
       const incomingMessage = {
         ...message,
-        status: 'delivered' as const // Mark as delivered, not read initially
+        status: 'delivered' as const
       }
       chatStorage.addMessage(user.phone, incomingMessage as StoredMessage)
-      console.log('💾 Message saved to storage')
-      
-      // Update conversation with new message
+
       updateConversationWithNewMessage(message.from_phone, message.message_text, message.timestamp)
-      console.log('📋 Conversation updated')
-      
-      // Get sender name for notification
-      const senderName = chatStorage.getContactName(user.phone, message.from_phone)
-      console.log('👤 Sender name resolved:', senderName)
-      
-      // Show notification logic
-      const shouldShowNotification = !isPageVisible || selectedConversation !== message.from_phone
-      console.log('🔔 Should show notification:', shouldShowNotification)
-      console.log('  - Page not visible:', !isPageVisible)
-      console.log('  - Different conversation:', selectedConversation !== message.from_phone)
-      
-      if (shouldShowNotification) {
-        console.log('🔔 SHOWING NOTIFICATION for:', senderName)
+
+      if (selectedConversation !== message.from_phone) {
+        const senderName = chatStorage.getContactName(user.phone, message.from_phone)
         notificationManager.showMessageNotification(
           senderName,
           message.message_text,
           message.from_phone,
           () => {
-            console.log('🔔 Notification clicked, focusing window and selecting conversation')
             window.focus()
             handleConversationSelect(message.from_phone)
           }
         )
-      } else {
-        console.log('🔕 Not showing notification - user is viewing this conversation')
+
+        if ((window as any).addBubbleNotification) {
+          ;(window as any).addBubbleNotification(
+            message.from_phone,
+            message.message_text,
+            senderName
+          )
+        }
       }
-      
-      // Always reload conversations to update UI with new unread counts
-      console.log('🔄 Reloading conversations from storage')
+
+      updateUnreadCount()
       loadConversationsFromStorage()
     },
     onConversationUpdate: () => {
-      console.log('🔄 Conversation update callback triggered')
       loadConversationsFromStorage()
     }
   })
 
-  // Page visibility detection for notifications
+  // Page visibility detection
   useEffect(() => {
     const handleVisibilityChange = () => {
       const newVisibility = !document.hidden
       setIsPageVisible(newVisibility)
-      console.log('👁️ Page visibility changed:', newVisibility)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -126,16 +121,12 @@ export default function WhatsAppClone() {
   // Request notification permission on load
   useEffect(() => {
     if (user) {
-      console.log('🔔 Requesting notification permission for user:', user.phone)
-      notificationManager.requestPermission().then(granted => {
-        console.log('🔔 Notification permission granted:', granted)
-      })
+      notificationManager.requestPermission()
     }
   }, [user])
 
   useEffect(() => {
     if (user) {
-      console.log('👤 User logged in, loading conversations for:', user.phone)
       loadConversationsFromStorage()
     }
   }, [user])
@@ -143,46 +134,32 @@ export default function WhatsAppClone() {
   const loadConversationsFromStorage = () => {
     if (!user) return
 
-    console.log('🔄 Loading conversations from storage...')
-    
-    // Load from local storage with recalculated unread counts
     const storedConversations = chatStorage.getConversations(user.phone)
-    
-    // Convert stored conversations to display format
+
     const displayConversations = storedConversations.map(conv => ({
       wa_id: conv.wa_id,
       name: conv.custom_name || conv.name,
       last_message: conv.last_message,
       last_message_time: conv.last_message_time,
-      unread_count: conv.unread_count // This is now calculated from actual messages
+      unread_count: conv.unread_count
     }))
 
-    // Sort by last message time
-    displayConversations.sort((a, b) => 
+    displayConversations.sort((a, b) =>
       new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
     )
 
     setConversations(displayConversations)
-    console.log('📋 Loaded conversations:', displayConversations.map(c => ({
-      name: c.name,
-      unread: c.unread_count,
-      lastMsg: c.last_message.substring(0, 20)
-    })))
   }
 
   const updateConversationWithNewMessage = (fromPhone: string, messageText: string, timestamp: string) => {
     if (!user) return
 
-    console.log('🔄 Updating conversation for new message from:', fromPhone)
-
     const storedConversations = chatStorage.getConversations(user.phone)
     const contactName = chatStorage.getContactName(user.phone, fromPhone)
-    
+
     const existingIndex = storedConversations.findIndex(conv => conv.wa_id === fromPhone)
-    
-    // Calculate current unread count from messages
     const currentUnreadCount = chatStorage.calculateUnreadCount(user.phone, fromPhone)
-    
+
     const updatedConv: StoredConversation = {
       wa_id: fromPhone,
       name: contactName,
@@ -190,38 +167,29 @@ export default function WhatsAppClone() {
       last_message_time: timestamp,
       unread_count: currentUnreadCount
     }
-    
+
     if (existingIndex >= 0) {
       storedConversations[existingIndex] = { ...storedConversations[existingIndex], ...updatedConv }
-      console.log('📝 Updated existing conversation, unread count:', currentUnreadCount)
     } else {
       storedConversations.unshift(updatedConv)
-      console.log('➕ Added new conversation with unread count:', currentUnreadCount)
     }
-    
+
     chatStorage.saveConversations(user.phone, storedConversations)
-    
-    // Force reload conversations to update UI immediately
     loadConversationsFromStorage()
   }
 
   const fetchMessages = async (otherUserPhone: string) => {
     if (!user) return
-    
+
     try {
-      console.log('📨 Fetching messages between:', user.phone, 'and', otherUserPhone)
-      
-      // Load from local storage first
       const storedMessages = chatStorage.getMessages(user.phone, otherUserPhone)
       setMessages(storedMessages as EnhancedMessage[])
-      
-      // Update conversation with latest message if messages exist
+
       if (storedMessages.length > 0) {
         const latestMessage = storedMessages[storedMessages.length - 1]
         updateConversationWithLatestMessage(otherUserPhone, latestMessage.message_text, latestMessage.timestamp)
       }
-      
-      // Try to fetch from API as well
+
       const response = await fetch('/api/messages/between', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,31 +198,27 @@ export default function WhatsAppClone() {
           user2: otherUserPhone
         })
       })
-      
+
       if (response.ok) {
         const apiMessages = await response.json()
         if (apiMessages.length > 0) {
-          // Merge with stored messages
           const allMessages = [...storedMessages, ...apiMessages]
-          const uniqueMessages = allMessages.filter((msg, index, self) => 
+          const uniqueMessages = allMessages.filter((msg, index, self) =>
             index === self.findIndex(m => m._id === msg._id)
           )
           uniqueMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-          
+
           setMessages(uniqueMessages as EnhancedMessage[])
           chatStorage.saveMessages(user.phone, otherUserPhone, uniqueMessages as StoredMessage[])
-          
-          // Update conversation with the very latest message
+
           if (uniqueMessages.length > 0) {
             const latestMessage = uniqueMessages[uniqueMessages.length - 1]
             updateConversationWithLatestMessage(otherUserPhone, latestMessage.message_text, latestMessage.timestamp)
           }
         }
       }
-      
-      // Mark conversation as read when opening
+
       markConversationAsRead(otherUserPhone)
-      
     } catch (error) {
       console.error('Error fetching messages:', error)
     }
@@ -263,19 +227,17 @@ export default function WhatsAppClone() {
   const markConversationAsRead = (otherUserPhone: string) => {
     if (!user) return
 
-    console.log('✅ Marking conversation as read:', otherUserPhone)
     chatStorage.updateConversationUnreadCount(user.phone, otherUserPhone, false)
+    updateUnreadCount()
     loadConversationsFromStorage()
   }
 
   const handleConversationSelect = (waId: string) => {
-    console.log('🎯 Selected conversation:', waId)
     setSelectedConversation(waId)
-    
-    // Get contact name
+
     const contactName = chatStorage.getContactName(user?.phone || '', waId)
     setSelectedConversationName(contactName)
-    
+
     fetchMessages(waId)
   }
 
@@ -284,7 +246,6 @@ export default function WhatsAppClone() {
 
     setSendingMessage(true)
 
-    // Create optimistic message for immediate display
     const optimisticMessage: EnhancedMessage = {
       _id: `temp_${Date.now()}`,
       from_phone: user.phone,
@@ -296,7 +257,6 @@ export default function WhatsAppClone() {
       sender_name: user.name
     }
 
-    // Add optimistic message immediately
     setMessages(prev => [...prev, optimisticMessage])
 
     try {
@@ -313,32 +273,21 @@ export default function WhatsAppClone() {
 
       if (response.ok) {
         const savedMessage = await response.json()
-        console.log('📤 Message sent successfully:', savedMessage)
-        
-        // Replace optimistic message with real one
-        setMessages(prev => 
-          prev.map(msg => 
+
+        setMessages(prev =>
+          prev.map(msg =>
             msg._id === optimisticMessage._id ? savedMessage : msg
           )
         )
-        
-        // Save to local storage
+
         chatStorage.addMessage(user.phone, savedMessage as StoredMessage)
-        
-        // Broadcast message to other sessions
-        console.log('📡 Broadcasting message to other users')
         broadcastMessage(savedMessage)
-        
-        // Update conversation in storage (for sender)
         updateConversationInStorage(selectedConversation, text, savedMessage.timestamp)
-        
       } else {
-        // Remove optimistic message on failure
         setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id))
       }
     } catch (error) {
       console.error('Error sending message:', error)
-      // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id))
     } finally {
       setSendingMessage(false)
@@ -350,32 +299,29 @@ export default function WhatsAppClone() {
 
     const storedConversations = chatStorage.getConversations(user.phone)
     const contactName = chatStorage.getContactName(user.phone, otherPhone)
-    
+
     const existingIndex = storedConversations.findIndex(conv => conv.wa_id === otherPhone)
     const updatedConv: StoredConversation = {
       wa_id: otherPhone,
       name: contactName,
       last_message: lastMessage,
       last_message_time: timestamp,
-      unread_count: 0 // Sender always has 0 unread for their own messages
+      unread_count: 0
     }
-    
+
     if (existingIndex >= 0) {
       storedConversations[existingIndex] = { ...storedConversations[existingIndex], ...updatedConv }
     } else {
       storedConversations.unshift(updatedConv)
     }
-    
+
     chatStorage.saveConversations(user.phone, storedConversations)
-    
-    // Force reload conversations to update UI immediately
     loadConversationsFromStorage()
   }
 
   const handleAddContact = (phone: string, name: string) => {
     if (!user) return
 
-    // Save contact
     chatStorage.saveContact(user.phone, {
       phone,
       name,
@@ -383,10 +329,9 @@ export default function WhatsAppClone() {
       added_at: new Date().toISOString()
     })
 
-    // Add to conversations if not exists
     const storedConversations = chatStorage.getConversations(user.phone)
     const existingConv = storedConversations.find(conv => conv.wa_id === phone)
-    
+
     if (!existingConv) {
       const newConv: StoredConversation = {
         wa_id: phone,
@@ -400,8 +345,6 @@ export default function WhatsAppClone() {
     }
 
     loadConversationsFromStorage()
-    
-    // Start chat with the new contact
     setSelectedConversation(phone)
     setSelectedConversationName(name)
     setMessages([])
@@ -412,10 +355,10 @@ export default function WhatsAppClone() {
 
     const storedConversations = chatStorage.getConversations(user.phone)
     const contactName = chatStorage.getContactName(user.phone, otherPhone)
-    
+
     const existingIndex = storedConversations.findIndex(conv => conv.wa_id === otherPhone)
     const currentUnreadCount = chatStorage.calculateUnreadCount(user.phone, otherPhone)
-    
+
     const updatedConv: StoredConversation = {
       wa_id: otherPhone,
       name: contactName,
@@ -423,16 +366,28 @@ export default function WhatsAppClone() {
       last_message_time: timestamp,
       unread_count: currentUnreadCount
     }
-    
+
     if (existingIndex >= 0) {
       storedConversations[existingIndex] = { ...storedConversations[existingIndex], ...updatedConv }
     } else {
       storedConversations.unshift(updatedConv)
     }
-    
+
     chatStorage.saveConversations(user.phone, storedConversations)
     loadConversationsFromStorage()
   }
+
+  // Derived: filtered conversations by convSearch
+  const filteredConversations = useMemo(() => {
+    const q = convSearch.trim().toLowerCase()
+    if (!q) return conversations
+    return conversations.filter(c => {
+      const name = c.name?.toLowerCase() || ''
+      const phone = c.wa_id?.toLowerCase() || ''
+      const preview = c.last_message?.toLowerCase() || ''
+      return name.includes(q) || phone.includes(q) || preview.includes(q)
+    })
+  }, [convSearch, conversations])
 
   if (isLoading) {
     return (
@@ -452,7 +407,7 @@ export default function WhatsAppClone() {
   return (
     <div className="flex h-screen bg-gray-100">
       <ConnectionStatus isConnected={isConnected} connectionAttempts={connectionAttempts} />
-      
+
       {/* Sidebar */}
       <div className={`w-full md:w-1/3 bg-white border-r border-gray-200 flex flex-col ${
         selectedConversation ? 'hidden md:flex' : 'flex'
@@ -460,9 +415,20 @@ export default function WhatsAppClone() {
         {/* Header */}
         <div className="bg-gray-50 p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-gray-800">WhatsApp Web</h1>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-xl font-semibold text-gray-800">WhatsApp Web</h1>
+              {totalUnreadCount > 0 && (
+                <div className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                  {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                </div>
+              )}
+              {isPolling && (
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Checking for new messages..."></div>
+              )}
+            </div>
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">{user.name}</span>
+              {/* Removed manual refresh button */}
               <button
                 onClick={logout}
                 className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200"
@@ -488,9 +454,12 @@ export default function WhatsAppClone() {
               <input
                 type="text"
                 placeholder="Search conversations"
+                value={convSearch}
+                onChange={(e) => setConvSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                aria-label="Search conversations"
               />
-              <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -498,8 +467,9 @@ export default function WhatsAppClone() {
               onClick={() => setShowAddContactDialog(true)}
               className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
               title="Add new contact"
+              aria-label="Add new contact"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             </button>
@@ -516,7 +486,7 @@ export default function WhatsAppClone() {
           </div>
         ) : (
           <ConversationList
-            conversations={conversations}
+            conversations={filteredConversations}
             selectedConversation={selectedConversation}
             onConversationSelect={handleConversationSelect}
           />
