@@ -1,18 +1,11 @@
-import { MongoClient, Db, type MongoClientOptions } from 'mongodb'
+import { MongoClient, Db } from 'mongodb'
 
 if (!process.env.MONGODB_URI) {
   console.warn('Warning: MONGODB_URI environment variable is not set')
 }
 
 const uri = process.env.MONGODB_URI || ''
-const options: MongoClientOptions = {
-  // Use Stable API V1 for Atlas to improve compatibility
-  serverApi: { version: '1' as any, strict: false, deprecationErrors: false },
-  // TLS is required for Atlas; keep it explicit
-  tls: true,
-  // DEV-ONLY escape hatch for SSL inspection issues. Set MONGODB_TLS_INSECURE=true to test locally.
-  tlsAllowInvalidCertificates: process.env.MONGODB_TLS_INSECURE === 'true',
-}
+const options = {}
 
 let client: MongoClient
 let clientPromise: Promise<MongoClient>

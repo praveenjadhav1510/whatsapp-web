@@ -12,12 +12,7 @@ export async function GET() {
 
     // Try to connect to MongoDB
     const { MongoClient } = await import('mongodb')
-    const options = {
-      serverApi: { version: '1' as any, strict: false, deprecationErrors: false },
-      tls: true,
-      tlsAllowInvalidCertificates: process.env.MONGODB_TLS_INSECURE === 'true',
-    }
-    const client = new MongoClient(process.env.MONGODB_URI, options)
+    const client = new MongoClient(process.env.MONGODB_URI)
     
     await client.connect()
     
@@ -47,8 +42,6 @@ export async function GET() {
       errorMessage = 'Network error. Please check your network access settings in MongoDB Atlas.'
     } else if (error.code === 8000) {
       errorMessage = 'MongoDB Atlas authentication error. Verify your credentials and network access.'
-    } else if (error.message?.toLowerCase().includes('tls') || (error as any).code === 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR') {
-      errorMessage = 'TLS handshake error. If you are behind SSL inspection (corporate antivirus/proxy), set MONGODB_TLS_INSECURE=true temporarily for local dev, or install your corporate CA. Ensure your connection string uses mongodb+srv and your password is URL-encoded.'
     }
     
     return NextResponse.json({ 
